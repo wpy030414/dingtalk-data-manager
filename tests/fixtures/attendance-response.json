@@ -1,0 +1,32 @@
+{
+  "attendanceList": [
+    {
+      "id": 1,
+      "userId": "user001",
+      "userCheckTime": "2024-01-15 09:00:00",
+      "workDate": "2024-01-15",
+      "timeResult": "Normal",
+      "checkType": "OnDuty",
+      "locationResult": "Normal",
+      "groupId": 1,
+      "planId": 1,
+      "recordId": 100,
+      "sourceType": "ATM"
+    },
+    {
+      "id": 2,
+      "userId": "user001",
+      "userCheckTime": "2024-01-15 18:00:00",
+      "workDate": "2024-01-15",
+      "timeResult": "Normal",
+      "checkType": "OffDuty",
+      "locationResult": "Normal",
+      "groupId": 1,
+      "planId": 1,
+      "recordId": 101,
+      "sourceType": "ATM"
+    }
+  ],
+  "hasMore": false,
+  "totalCount": 2
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dingtalk-data-gateway": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "cwd": "C:/Users/xrl/Documents/Repos/dingtalk-data-manager"
+    }
+  }
+}

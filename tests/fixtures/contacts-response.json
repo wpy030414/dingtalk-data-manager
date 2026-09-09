@@ -1,0 +1,42 @@
+{
+  "users": [
+    {
+      "userId": "user001",
+      "unionId": "union001",
+      "name": "张三",
+      "avatar": "https://example.com/avatar1.png",
+      "stateCode": "86",
+      "mobile": "13800138000",
+      "email": "zhangsan@example.com",
+      "orgEmail": "zhangsan@company.com",
+      "title": "工程师",
+      "workPlace": "杭州",
+      "deptIdList": [1, 2],
+      "deptOrderList": [1, 2],
+      "active": true,
+      "admin": false,
+      "boss": false,
+      "leaderInDept": [{ "deptId": 1, "leader": false }]
+    },
+    {
+      "userId": "user002",
+      "unionId": "union002",
+      "name": "李四",
+      "avatar": "https://example.com/avatar2.png",
+      "stateCode": "86",
+      "mobile": "13800138001",
+      "email": "lisi@example.com",
+      "orgEmail": "lisi@company.com",
+      "title": "经理",
+      "workPlace": "北京",
+      "deptIdList": [1],
+      "deptOrderList": [1],
+      "active": false,
+      "admin": true,
+      "boss": false,
+      "leaderInDept": [{ "deptId": 1, "leader": true }]
+    }
+  ],
+  "totalCount": 2,
+  "hasMore": false
+}

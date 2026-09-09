@@ -1,0 +1,12 @@
+ClientID: "dingtest123456"
+ClientSecret: "test-secret-abcdef"
+LogLevel: "info"
+YidaApps:
+  - name: "请假审批"
+    desp: "员工请假审批表单"
+    appId: "APP_LEAVE_001"
+    systemToken: "token-leave-001"
+  - name: "报销管理"
+    desp: "费用报销流程"
+    appId: "APP_EXPENSE_002"
+    systemToken: "token-expense-002"

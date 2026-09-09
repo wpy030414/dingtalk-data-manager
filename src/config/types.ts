@@ -1,0 +1,1 @@
+export type { Config, YidaAppConfig } from "./schema.js";
