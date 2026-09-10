@@ -28,18 +28,21 @@ export const SERVER_INSTRUCTIONS = `钉钉企业数据网关（只读，无任�
    只要姓名片段：dingtalk_search_users(queryWord)；要精确同名加 fullMatchField=0
 3. 部门成员：dingtalk_list_department_user_ids（仅 ID，快）或 dingtalk_list_users（含详情）
 4. 某人某天考勤：dingtalk_get_attendance({userIds:[...], workDate:"YYYY-MM-DD"})
-5. 宜搭查数据（formUuid 和 userId 均可选——网关自动补全）：
+5. 宜搭查数据（formUuid 可选——网关自动补全；userId 对 Agent 完全透明）：
+   ⭐ 先调 dingtalk_yida_list_forms({appName}) → 返回每个表单的 formUuid + fields[{fieldId, label}]
+      一个调用搞定：选表 → 拿 formUuid → 拿 fieldId，三合一
    单表单应用只需 dingtalk_yida_query_form_data({appName}) 即可拿数据
-   需要字段翻译时调 dingtalk_yida_get_form_fields(formUuid可选)
-   需要搜索时调 search_form_data(searchFieldJson='{"字段ID":"关键词"}')
+   searchFieldJson 的字段 ID 直接用 list_forms 返回的 fieldId，无需再调 get_form_fields
+   需要组件类型等额外元数据时再调 dingtalk_yida_get_form_fields
 6. 审批进度：dingtalk_yida_list_process_instances → get_process_instance / get_operation_records
 
 ── 关键约定 ──
 - 所有返回统一信封 { success, data, error?, pagination? }；success=false 时读 error.code / error.message
-- 宜搭所有接口必须传 appName（来自 .env.yml 配置）；userId 通常已在配置里，无需传
+- 宜搭所有接口必须传 appName（来自 .env.yml 配置）；userId 由网关自动从表单创建者获取，Agent 无需关心
+- ⚠️ 查询宜搭任何应用前，请先调 dingtalk_yida_list_forms —— 一次调用同时拿到 formUuid、fieldId、中文标签
 - 宜搭 searchFieldJson 是【包含匹配】的模糊搜索，格式 '{"字段ID":"关键词"}'（如 '{"textField_mr4at0xc":"无人机"}'）
-  字段 ID 必须先调 get_form_fields 获取，不能凭猜
-- 宜搭表单数据的 key 是字段 ID（如 textField_mr4at0xc），对照 get_form_fields 的中文标签解读
+  字段 ID 直接用 dingtalk_yida_list_forms 返回的 fieldId，通常无需再调 get_form_fields
+- 宜搭表单数据的 key 是字段 ID（如 textField_mr4at0xc），对照 list_forms 返回的 label 解读
 - 考勤打卡接口只支持单用户，网关已自动批处理，直接传 userIds 数组
 - 大结果集优先用「仅 ID」工具（list_department_user_ids / list_sub_department_ids）再按需补详情
 - 部门/用户接口只返回**直属**成员，不含下级部门；需要下级时用 list_sub_department_ids 递归
@@ -92,7 +95,7 @@ GET https://oapi.dingtalk.com/gettoken?appkey={ClientID}&appsecret={ClientSecret
 | yida_get_process_instance | GET | /v1.0/yida/processes/instancesInfos/{id} |
 | yida_get_operation_records | GET | /v1.0/yida/processes/operationRecords |
 
-宜搭所有接口都强制要求 userId（有该应用数据权限的用户），配置在 .env.yml 的 YidaApps[].userId。
+宜搭所有接口的 userId 由网关自动从表单创建者获取，Agent/用户均无需关心。
 
 ## 搜索语义（重要）
 - **通讯录 search_users / search_departments**：单 token 子串匹配。复合查询如「东校中学2025级」会 0 命中 → 用 dingtalk_find_department

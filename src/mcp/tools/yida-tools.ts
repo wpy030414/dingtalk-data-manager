@@ -15,6 +15,9 @@ import { gateway } from "../../gateway/gateway.js";
  *   POST   /v1.0/yida/processes/instances                      → 流程实例列表
  *   GET    /v1.0/yida/processes/instancesInfos/{id}            → 流程实例详情
  *   GET    /v1.0/yida/processes/operationRecords               → 审批记录
+ *
+ * userId 对 Agent 完全透明——网关自动从 .env.yml 的 creatorUserId 或表单创建者获取。
+ * Agent 在查询任何应用数据前，应先调用 dingtalk_yida_list_forms 了解有哪些表可用。
  */
 
 /** 每个参数都新建 zod 实例，避免 zod→JSON Schema 时生成 $ref（部分客户端不解析 $ref）。 */
@@ -29,13 +32,7 @@ const P = {
       .string()
       .min(1)
       .optional()
-      .describe("表单 UUID（FORM- 开头）。可选——不传时，若应用只有一个表单则自动取。先用 dingtalk_yida_list_forms 查看"),
-  userId: () =>
-    z
-      .string()
-      .min(1)
-      .optional()
-      .describe("操作人 userId（须有该应用数据权限）。首次调用需传，之后网关从表单创建者自动获取"),
+      .describe("表单 UUID（FORM- 开头）。可选——不传时，若应用只有一个表单则自动取。**推荐先用 dingtalk_yida_list_forms 了解应用有哪些表再选择**"),
   searchFieldJson: (fuzzy: boolean) =>
     z
       .string()
@@ -44,8 +41,8 @@ const P = {
         fuzzy
           ? "字段过滤条件，JSON 字符串格式 '{\"字段ID\":\"关键词\"}'。" +
             "注意：钉钉做的是【包含匹配】（模糊），如 '{\"textField_mr4at0xc\":\"无人机\"}' 能命中长文本。" +
-            "字段ID 必须先用 dingtalk_yida_get_form_fields 获取"
-          : "字段过滤条件，JSON 字符串格式 '{\"字段ID\":\"关键词\"}'。字段ID 必须先用 dingtalk_yida_get_form_fields 获取",
+            "字段ID 直接用 dingtalk_yida_list_forms 返回的 fieldId"
+          : "字段过滤条件，JSON 字符串格式 '{\"字段ID\":\"关键词\"}'。字段ID 直接用 dingtalk_yida_list_forms 返回的 fieldId",
       ),
   originatorId: (label: string) =>
     z.string().optional().describe(`${label}（钉钉 userId）`),
@@ -69,42 +66,48 @@ function json(result: unknown) {
 }
 
 export function registerYidaTools(server: McpServer): void {
+  // ── 第 1 步 · 发现 ──
+
   server.tool(
     "dingtalk_yida_list_apps",
-    "列出 .env.yml 中配置的全部宜搭应用。查宜搭的第 1 步——后续工具传这里返回的 name 作为 appName。" +
-      "注意：配置中不再含 userId（网关自动从表单创建者获取）",
+    "列出 .env.yml 中配置的全部宜搭应用。这是 Agent 接触宜搭的入口——先看看有哪些应用可用。" +
+      "userId 对 Agent 完全透明（网关自动处理）",
     {},
     READ_ONLY,
     async () => json(await gateway.listYidaApps()),
   );
 
+  // ── 第 2 步 · 选表（推荐在任何数据查询前先调用）──
+
   server.tool(
     "dingtalk_yida_list_forms",
-    "列出应用下全部表单——**含每个表单的字段名列表**（如「申请日期、教师姓名、申请校区……」）。" +
-      "Agent 应通过字段名语义判断哪个表单是自己需要的，从中选择对应 formUuid。userId 可选——首次调用后自动缓存",
+    "【推荐第一步】列出应用下全部表单——每个表单自带 fieldId+中文标签（如 'textField_mr4at0xc→外出事由'）。" +
+      "Agent 通过字段语义选表并拿到 formUuid，同时**直接获取了 fieldId**，无需再调 get_form_fields 即可构造 searchFieldJson。" +
+      "一个调用搞定：选表 → 拿 formUuid → 拿 fieldId，三合一",
     {
       appName: P.appName(),
-      userId: P.userId(),
       pageSize: P.pageSize(),
       pageNumber: P.pageNumber(),
     },
     READ_ONLY,
-    async ({ appName, userId, pageSize, pageNumber }) =>
-      json(await gateway.listYidaForms({ appName, userId, pageSize, pageNumber })),
+    async ({ appName, pageSize, pageNumber }) =>
+      json(await gateway.listYidaForms({ appName, pageSize, pageNumber })),
   );
+
+  // ── 字段/组件元数据 ──
 
   server.tool(
     "dingtalk_yida_get_form_fields",
-    "获取宜搭表单的字段定义（fieldId / 中文标签 / 组件类型）。" +
-      "formUuid 可选：不传则自动取应用的第一个表单。用途：把 formData 的原始 key 翻译成中文标签、构造 searchFieldJson 时确定字段 ID",
+    "获取宜搭表单的字段定义（fieldId / 中文标签 / 组件类型）。formUuid 可选。" +
+      "**通常情况下不需要调这个工具——dingtalk_yida_list_forms 已自带 fieldId+中文标签**。" +
+      "仅当需要组件类型/behavior 等额外元数据时才用",
     {
       appName: P.appName(),
       formUuid: P.formUuid(),
-      userId: P.userId(),
     },
     READ_ONLY,
-    async ({ appName, formUuid, userId }) =>
-      json(await gateway.getYidaFormFields({ appName, formUuid, userId })),
+    async ({ appName, formUuid }) =>
+      json(await gateway.getYidaFormFields({ appName, formUuid })),
   );
 
   server.tool(
@@ -113,22 +116,23 @@ export function registerYidaTools(server: McpServer): void {
     {
       appName: P.appName(),
       formUuid: P.formUuid(),
-      userId: P.userId(),
     },
     READ_ONLY,
-    async ({ appName, formUuid, userId }) =>
-      json(await gateway.getYidaFormComponents({ appName, formUuid, userId })),
+    async ({ appName, formUuid }) =>
+      json(await gateway.getYidaFormComponents({ appName, formUuid })),
   );
+
+  // ── 数据查询 ──
 
   server.tool(
     "dingtalk_yida_query_form_data",
     "查询宜搭表单实例数据（分页，formUuid 可选——不传自动取第一个表单）。" +
-      "需对照 dingtalk_yida_get_form_fields 的中文标签解读。" +
-      "searchFieldJson 为【包含匹配】的模糊搜索，可用内容片段反查记录",
+      "**推荐流程：dingtalk_yida_list_forms 选表拿 formUuid + fieldId → 直接调本工具**。" +
+      "searchFieldJson 格式 '{\"字段ID\":\"关键词\"}'，字段 ID 直接用 list_forms 返回的 fieldId。" +
+      "匹配方式为【包含匹配】（模糊搜索），可用内容片段反查记录",
     {
       appName: P.appName(),
       formUuid: P.formUuid(),
-      userId: P.userId(),
       searchFieldJson: P.searchFieldJson(true),
       originatorId: P.originatorId("按提交人过滤"),
       createFromTimeGMT: P.gmtFrom("提交时间下限"),
@@ -142,7 +146,6 @@ export function registerYidaTools(server: McpServer): void {
         await gateway.queryYidaFormData({
           appName: args.appName,
           formUuid: args.formUuid,
-          userId: args.userId,
           searchFieldJson: args.searchFieldJson,
           originatorId: args.originatorId,
           createFromTimeGMT: args.createFromTimeGMT,
@@ -155,11 +158,11 @@ export function registerYidaTools(server: McpServer): void {
 
   server.tool(
     "dingtalk_yida_search_form_data",
-    "搜索宜搭表单实例（比 query 多了提交人/修改时间元数据），formUuid 可选。searchFieldJson 是包含匹配的模糊搜索",
+    "搜索宜搭表单实例（比 query 多了提交人/修改时间元数据），formUuid 可选。searchFieldJson 是包含匹配的模糊搜索。" +
+      "**先调 dingtalk_yida_list_forms 选表**",
     {
       appName: P.appName(),
       formUuid: P.formUuid(),
-      userId: P.userId(),
       searchFieldJson: P.searchFieldJson(true),
       originatorId: P.originatorId("按提交人过滤"),
       createFromTimeGMT: P.gmtFrom("提交时间下限"),
@@ -173,7 +176,6 @@ export function registerYidaTools(server: McpServer): void {
         await gateway.searchYidaFormData({
           appName: args.appName,
           formUuid: args.formUuid,
-          userId: args.userId,
           searchFieldJson: args.searchFieldJson,
           originatorId: args.originatorId,
           createFromTimeGMT: args.createFromTimeGMT,
@@ -184,13 +186,15 @@ export function registerYidaTools(server: McpServer): void {
       ),
   );
 
+  // ── 流程 ──
+
   server.tool(
     "dingtalk_yida_list_process_instances",
     "查询宜搭流程实例列表（formUuid 可选——不传自动取第一个表单），可按状态/结果/发起人/时间过滤。" +
+      "**先调 dingtalk_yida_list_forms 选表**。" +
       "查审批进度第 1 步 → get_process_instance 看详情 → get_operation_records 看链路",
     {
       appName: P.appName(),
-      userId: P.userId(),
       formUuid: P.formUuid(),
       instanceStatus: z
         .string()
@@ -209,7 +213,6 @@ export function registerYidaTools(server: McpServer): void {
       json(
         await gateway.listYidaProcessInstances({
           appName: args.appName,
-          userId: args.userId,
           formUuid: args.formUuid,
           instanceStatus: args.instanceStatus,
           approvedResult: args.approvedResult,
@@ -230,11 +233,10 @@ export function registerYidaTools(server: McpServer): void {
     {
       appName: P.appName(),
       processInstanceId: P.processInstanceId(),
-      userId: P.userId(),
     },
     READ_ONLY,
-    async ({ appName, processInstanceId, userId }) =>
-      json(await gateway.getYidaProcessInstance({ appName, processInstanceId, userId })),
+    async ({ appName, processInstanceId }) =>
+      json(await gateway.getYidaProcessInstance({ appName, processInstanceId })),
   );
 
   server.tool(
@@ -244,10 +246,9 @@ export function registerYidaTools(server: McpServer): void {
     {
       appName: P.appName(),
       processInstanceId: P.processInstanceId(),
-      userId: P.userId(),
     },
     READ_ONLY,
-    async ({ appName, processInstanceId, userId }) =>
-      json(await gateway.getYidaOperationRecords({ appName, processInstanceId, userId })),
+    async ({ appName, processInstanceId }) =>
+      json(await gateway.getYidaOperationRecords({ appName, processInstanceId })),
   );
 }

@@ -208,7 +208,6 @@ export class Gateway {
 
   async listYidaForms(params: {
     appName: string;
-    userId?: string;
     pageSize?: number;
     pageNumber?: number;
   }) {
@@ -218,7 +217,6 @@ export class Gateway {
   async getYidaFormFields(params: {
     appName: string;
     formUuid?: string;
-    userId?: string;
   }) {
     return this.handle(() => this.yida.getFormFields(params));
   }
@@ -226,7 +224,6 @@ export class Gateway {
   async getYidaFormComponents(params: {
     appName: string;
     formUuid?: string;
-    userId?: string;
   }) {
     return this.handle(() => this.yida.getFormComponents(params));
   }
@@ -234,7 +231,6 @@ export class Gateway {
   async queryYidaFormData(params: {
     appName: string;
     formUuid?: string;
-    userId?: string;
     searchFieldJson?: string;
     originatorId?: string;
     createFromTimeGMT?: string;
@@ -248,7 +244,6 @@ export class Gateway {
   async searchYidaFormData(params: {
     appName: string;
     formUuid?: string;
-    userId?: string;
     searchFieldJson?: string;
     originatorId?: string;
     createFromTimeGMT?: string;
@@ -261,7 +256,6 @@ export class Gateway {
 
   async listYidaProcessInstances(params: {
     appName: string;
-    userId?: string;
     formUuid?: string;
     instanceStatus?: string;
     approvedResult?: string;
@@ -278,7 +272,6 @@ export class Gateway {
   async getYidaProcessInstance(params: {
     appName: string;
     processInstanceId: string;
-    userId?: string;
   }) {
     return this.handle(() => this.yida.getProcessInstance(params));
   }
@@ -286,7 +279,6 @@ export class Gateway {
   async getYidaOperationRecords(params: {
     appName: string;
     processInstanceId: string;
-    userId?: string;
   }) {
     return this.handle(() => this.yida.getOperationRecords(params));
   }

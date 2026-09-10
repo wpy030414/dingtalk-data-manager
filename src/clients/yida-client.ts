@@ -9,7 +9,7 @@ const NEW_API = "https://api.dingtalk.com";
 export interface YidaContext {
   appType: string;
   systemToken: string;
-  userId: string;
+  userId?: string;
 }
 
 /** Build a query string, skipping undefined/null values. */

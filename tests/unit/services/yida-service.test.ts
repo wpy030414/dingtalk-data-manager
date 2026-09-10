@@ -95,7 +95,7 @@ describe("YidaService", () => {
   it("should unwrap i18n form titles", async () => {
     const forms = await service.listForms({ appName: "学生外出参赛申请", userId: "u" });
     expect(forms).toEqual([
-      { formUuid: "FORM-1", formType: "process", title: "参赛申请", creator: "creator-001", gmtCreate: "2026-07-07T09:53Z", fields: ["申请日期", "外出事由"] },
+      { formUuid: "FORM-1", formType: "process", title: "参赛申请", creator: "creator-001", gmtCreate: "2026-07-07T09:53Z", fields: [{ fieldId: "dateField_mr4cz978", label: "申请日期" }, { fieldId: "textField_mr4at0xc", label: "外出事由" }] },
     ]);
   });
 
@@ -130,9 +130,16 @@ describe("YidaService", () => {
     expect(records).toEqual([{ operateTimeGMT: "2026-08-05T12:05Z", showName: "提交申请", operateType: "NEW_PROCESS", operatorName: "黄贤云", operatorUserId: "user-9", remark: "", activityId: "" }]);
   });
 
-  it("should throw when no userId available and no cache", async () => {
-    service = new YidaService(createMockClient());
-    await expect(service.listForms({ appName: "学生外出参赛申请" })).rejects.toThrow(/First call/);
+  it("should auto-bootstrap userId from form creator when not provided", async () => {
+    const bootstrapClient = createMockClient();
+    service = new YidaService(bootstrapClient);
+    const forms = await service.listForms({ appName: "学生外出参赛申请" });
+    expect(forms).toHaveLength(1);
+    // bootstrap 内部调了一次 listForms 拿 creator，然后 loadFormsCached 缓存命中不再调
+    expect(bootstrapClient.listForms).toHaveBeenCalledWith(
+      expect.objectContaining({ systemToken: "TOKEN_TEST" }),
+      expect.anything(),
+    );
   });
 
   it("should auto-resolve formUuid for single-form app", async () => {
