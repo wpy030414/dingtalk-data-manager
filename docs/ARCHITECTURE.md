@@ -6,7 +6,7 @@
 ┌─────────┐  stdio/HTTP   ┌───────────────────────────────┐
 │ MCP     │ ────────────▶ │ dingtalk-data-gateway         │
 │ Client  │               │                               │
-│(Claude) │ ◀──────────── │ McpServer (26 个 tool)        │
+│(Claude) │ ◀──────────── │ McpServer (27 个 tool)        │
 └─────────┘  JSON-RPC     │   + instructions + Resource   │
                           │   + ToolAnnotations           │
                           ├───────────────────────────────┤
@@ -23,7 +23,7 @@
                           │   3 种风格适配                │
                           ├───────────────────────────────┤
                           │ Auth (TokenManager)            │
-                          │   Promise 锁 + 7200s 缓存     │
+                          │   Promise 锁 + 动态缓存 TTL    │
                           │   300s 提前刷新缓冲            │
                           ├───────────────────────────────┤
                           │ Config (.env.yml → Zod)       │
@@ -112,6 +112,6 @@ Config ──（单例获取）──▶ TokenManager
 2. **两代 API 共存**：旧版 OAPI 用 `errcode/errmsg/result` 信封，新版用 HTTP status + `code/message`——BaseClient 各自处理。
 3. **单用户接口批处理**：`getupdatedata` 只接受一个 `userid`，AttendanceService 内部 `for...of` 遍历，失败用户 skip。
 4. **部门树缓存**：`/department/list` 返回全公司 875 个部门，ContactsService 缓存 5 分钟。
-5. **宜搭 userId 强制**：所有宜搭接口必须传一个有数据权限的 userId，配置在 `.env.yml` 的 `YidaApps[].userId`。
-6. **无持久化**：Token 和部门树是唯二的运行时缓存，不落盘。
+5. **宜搭 userId 完全透明**：所有宜搭接口自动从表单创建者获取 userId，Agent 和配置均无需关心。
+6. **无持久化**：Token、部门树、表单摘要均为运行时缓存，不落盘。
 7. **只读网关**：27 个工具全部标注 `readOnlyHint: true` / `destructiveHint: false`。

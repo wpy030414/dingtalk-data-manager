@@ -32,10 +32,9 @@ YidaApps:
     desp: "学生外出参赛申请"
     appId: "APP_FXFBNB47UKEYKJ0194BT"
     systemToken: "xxxxxxxxxxxxxxxx"
-    userId: "19250526481561411645"   # 有该应用数据权限的用户
 ```
 
-`BaseURL` 硬编码不可配；`TokenRefreshBuffer` 固定 7200 秒（官方默认）。
+`BaseURL` 硬编码不可配；Token 缓存 TTL 由 API 返回的 `expires_in` 动态决定（默认 7200s），提前 300s 刷新。
 
 ## 接入 MCP 客户端
 

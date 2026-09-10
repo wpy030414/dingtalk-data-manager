@@ -9,7 +9,7 @@
 - 流程实例列表 + 单实例详情 + 审批记录链—— formUuid 可选
 
 ## 输入 / 输出
-- **输入**：appName（来自 .env.yml）、formUuid（可选——单表单自动取）、userId（可选——3 级回退）、searchFieldJson（JSON 字符串 `{"字段ID":"关键词"}`）、时间过滤（GMT 字符串）
+- **输入**：appName（来自 .env.yml）、formUuid（可选——单表单自动取）、userId（可选——网关自动从表单创建者获取，显式传入可覆盖）、searchFieldJson（JSON 字符串 `{"字段ID":"关键词"}`）、时间过滤（GMT 字符串）
 - **输出**：`{ success, data }`
   - 字段定义：fieldId、componentName、label（中文）
   - 表单数据：items[{formInstanceId, formData, createTimeGMT, ...}]
@@ -18,7 +18,7 @@
 
 ## 约束
 - 全部走新版 API：`https://api.dingtalk.com/v1.0/yida/...`（JSON + `x-acs-dingtalk-access-token`）
-- userId 自动补全：1)显式传入 2).env.yml 配置 3)表单 creator（formCache 10 分钟）
+- userId 自动补全：1)显式传入 2)表单 creator（自动 bootstrap，缓存 10 分钟）——对 Agent 和 .env.yml 配置完全透明
 - formUuid 自动补全：单表单自动取；多表单抛清晰列出选项
 - `searchFieldJson` 是**包含匹配**的模糊搜索（实测 `津` 能命中 `天津`）
 - 表单数据以字段 ID 为 key（如 `textField_mr4at0xc`），必须先调 `get_form_fields` 做翻译

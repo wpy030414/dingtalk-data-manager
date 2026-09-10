@@ -134,8 +134,7 @@ find_user({name:"夏", deptHint:"东校中学2025级"})
 
 域名 `https://api.dingtalk.com`，**新版 API 风格**：JSON body，`x-acs-dingtalk-access-token` header。
 
-**所有宜搭接口都强制要求 `userId`** —— 必须是有该应用数据权限的用户（表单/应用创建者或管理员）。
-在 `.env.yml` 的 `YidaApps[].userId` 配置默认值，或在工具调用时逐次传入 `userId` 覆盖。
+**所有宜搭接口都强制要求 `userId`** —— 网关自动从表单创建者获取（`list_forms` 返回的 `creator`），对 Agent 和配置完全透明。不需要在 `.env.yml` 中配置 userId。
 
 > ⚡ **formUuid 和 userId 均可自动补全**（2026-09-09）：需要表单 ID 的工具（`get_form_fields` / `query_form_data` / `search_form_data` / `get_form_components` / `list_process_instances`）现均支持不传 `formUuid` 和 `userId`。
 > 网关自动：①取表单列表的 `creator` 作为 userId（表单创建者一定有数据权限）；②若应用仅 1 个表单则自动取 formUuid。单一表单应用只需传 `appName`：
@@ -147,26 +146,26 @@ find_user({name:"夏", deptHint:"东校中学2025级"})
 
 | MCP 工具 | 方法 | 完整 URL | 关键参数 |
 |---|---|---|---|
-| `dingtalk_yida_list_forms` | GET | `https://api.dingtalk.com/v1.0/yida/forms` | `appType`, `systemToken`, `userId`, `pageSize`, `pageNumber` |
-| `dingtalk_yida_get_form_fields` | GET | `https://api.dingtalk.com/v1.0/yida/forms/formFields` | `appType`, `formUuid`, `systemToken`, `userId` |
-| `dingtalk_yida_get_form_components` | GET | `https://api.dingtalk.com/v1.0/yida/forms/definitions/{appType}/{formUuid}` | `systemToken`, `userId`, `version` |
+| `dingtalk_yida_list_forms` | GET | `https://api.dingtalk.com/v1.0/yida/forms` | `appName`, `pageSize`, `pageNumber`。返回每个表单的 `formUuid` + `fields[{fieldId, label}]`，一步拿到字段 ID 和中文名 |
+| `dingtalk_yida_get_form_fields` | GET | `https://api.dingtalk.com/v1.0/yida/forms/formFields` | `appName`, `formUuid`（可选） |
+| `dingtalk_yida_get_form_components` | GET | `https://api.dingtalk.com/v1.0/yida/forms/definitions/{appType}/{formUuid}` | `appName`, `formUuid`（可选） |
 
-> `formFields` 返回字段 ID → 中文标签映射，是把 `formData` 的 `textField_xxx` 翻译成人话的关键。
+> `formFields` 返回字段 ID → 中文标签映射。**通常不需要调这个工具**——`list_forms` 已自带 `fieldId` + 中文标签（一步到位），仅当需要组件类型/`behavior` 等额外元数据时才用。
 
 ### 表单数据
 
 | MCP 工具 | 方法 | 完整 URL | 关键参数 |
 |---|---|---|---|
-| `dingtalk_yida_query_form_data` | POST | `https://api.dingtalk.com/v1.0/yida/forms/instances/query` | `appType`, `formUuid`, `userId`, `systemToken`, `searchFieldJson`, `originatorId`, `createFromTimeGMT`, `createToTimeGMT`, `pageSize`, `pageNumber` |
+| `dingtalk_yida_query_form_data` | POST | `https://api.dingtalk.com/v1.0/yida/forms/instances/query` | `appName`, `formUuid`（可选）, `searchFieldJson`, `originatorId`, `createFromTimeGMT`, `createToTimeGMT`, `pageSize`, `pageNumber` |
 | `dingtalk_yida_search_form_data` | POST | `https://api.dingtalk.com/v1.0/yida/forms/instances/search` | 同上，另支持 `dynamicOrder`, `logicOperator`, `currentPage` |
 
 ### 流程实例与审批
 
 | MCP 工具 | 方法 | 完整 URL | 关键参数 |
 |---|---|---|---|
-| `dingtalk_yida_list_process_instances` | POST | `https://api.dingtalk.com/v1.0/yida/processes/instances` | `appType`, `userId`, `systemToken`, `formUuid`, `instanceStatus`, `approvedResult`, `originatorId`, `createFromTimeGMT`, `createToTimeGMT`, `searchFieldJson`, `pageSize`, `pageNumber` |
-| `dingtalk_yida_get_process_instance` | GET | `https://api.dingtalk.com/v1.0/yida/processes/instancesInfos/{processInstanceId}` | `appType`, `systemToken`, `userId` |
-| `dingtalk_yida_get_operation_records` | GET | `https://api.dingtalk.com/v1.0/yida/processes/operationRecords` | `appType`, `processInstanceId`, `systemToken`, `userId` |
+| `dingtalk_yida_list_process_instances` | POST | `https://api.dingtalk.com/v1.0/yida/processes/instances` | `appName`, `formUuid`（可选）, `instanceStatus`, `approvedResult`, `originatorId`, `createFromTimeGMT`, `createToTimeGMT`, `searchFieldJson`, `pageSize`, `pageNumber` |
+| `dingtalk_yida_get_process_instance` | GET | `https://api.dingtalk.com/v1.0/yida/processes/instancesInfos/{processInstanceId}` | `appName`, `processInstanceId` |
+| `dingtalk_yida_get_operation_records` | GET | `https://api.dingtalk.com/v1.0/yida/processes/operationRecords` | `appName`, `processInstanceId` |
 
 > 注意区分：`processes/instances`（复数，列表，POST）vs `processes/instancesInfos/{id}`（单实例详情，GET）。
 
@@ -207,6 +206,6 @@ find_user({name:"夏", deptHint:"东校中学2025级"})
 | `errcode: 88` | IP 不在白名单 | 到钉钉开放平台后台添加出口 IP |
 | `errcode: 40014/42001` | access_token 无效/过期 | TokenManager 自动刷新 |
 | `errcode: 22` | 不合法 ApiName | 检查 URL 路径 |
-| `MissinguserId` | 宜搭接口缺 userId | 配置 `YidaApps[].userId` |
+| `MissinguserId` | 宜搭接口缺 userId | 网关自动从表单创建者获取，通常不会出现 |
 | `MissingformUuid` | 宜搭接口缺 formUuid | 先调 `dingtalk_yida_list_forms` 取 |
 | `InvalidAction.NotFound` | 路径/方法错误 | 对照本文档核对完整 URL |

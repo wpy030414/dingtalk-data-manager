@@ -28,17 +28,17 @@
 
 ---
 
-## ADR-03：宜搭所有接口强制 userId，统一配置在 .env.yml
+## ADR-03：宜搭所有接口强制 userId，由网关自动从表单创建者获取
 
 - **日期**：2026-09-09
-- **状态**：已采纳
+- **状态**：已采纳（后续被 ADR-10 增强——userId 完全透明化）
 - **背景**：实测发现宜搭所有服务端 API 必须传 `userId`——一个对该应用数据有权限的用户。用张思杰（普通管理员）查返回 0 条，用应用创建者返回 8 条。且 `formUuid` 也是强制参数。
 - **考虑过的方案**：
   1. 从 Auth token 反查当前用户 → 不可行，Token 是应用级别的，不是用户级别。
   2. 在 tool 调用时每次传 userId → **采纳为可选覆盖**。
-  3. 在 `.env.yml` 为每个宜搭应用配置默认 userId → **采纳为默认值**。
-- **决策**：`YidaApps[].userId` 配置默认值；tool 参数 `userId` 可选，传了就覆盖默认。`resolveContext()` 统一解析：没配也没传 → 抛清晰错误。
-- **后果**：配置模板需要引导用户填入创建者/admin 的 userId。换操作人只需改配置或传参。
+  3. 在 `.env.yml` 为每个宜搭应用配置默认 userId → **最初采纳，后被 ADR-10 废弃**。
+- **最终决策（ADR-10 后）**：`resolveAppAuth()` 自动从表单列表的 `creator` 字段获取 userId，无需任何配置。首次调用 `list_forms` 时自动 bootstrap——creator 缓存 10 分钟。
+- **后果**：userId 对 Agent 和配置完全透明。`.env.yml` 不再需要 `userId` 字段。
 
 ---
 
@@ -128,9 +128,9 @@
 
   - 5 个需要 formUuid 的工具（get_form_fields / get_form_components / query_form_data / search_form_data / list_process_instances）全部把 formUuid 改为可选。
 
-  - resolveAuto(appName, userId?, formUuid?) 统一处理：userId 优先级 1)传入 2)配置 3)表单 creator；formUuid 1)传入 2)单表单自动取 3)多表单抛列清单。
+  - resolveAuto(appName, userId?, formUuid?) 统一处理：userId 优先级 1)显式传入 2)表单 creator（自动 bootstrap，缓存 10 分钟）；formUuid 1)传入 2)单表单自动取 3)多表单抛列清单。
 
-  - 表单列表带缓存（10分钟），降低多次调用的 API 开销。
+  - resolveAppAuth() 首次调用时自动 bootstrap：调 list_forms 取 creator 作为 userId，无需 .env.yml 配置。
 
 - **为什么选这个**：Agent 说的「查一下参赛申请的数据」天然对应「appName=学生外出参赛申请」，不应额外要求「请先去查 formUuid 再回来告诉我」。
 
