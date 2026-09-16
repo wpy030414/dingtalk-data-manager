@@ -14,11 +14,17 @@ import type { YidaAppConfig } from "../config/schema.js";
  *
  * This is the single entry point for all business logic. MCP tools
  * call this gateway, never the individual services directly.
+ *
+ * All public methods cache successful results for 12 hours (keyed by
+ * method name + serialized params). Failed results are never cached.
  */
 export class Gateway {
   readonly contacts: ContactsService;
   readonly attendance: AttendanceService;
   readonly yida: YidaService;
+
+  private static readonly CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+  private cache = new Map<string, { at: number; data: unknown }>();
 
   constructor() {
     const contactsClient = new ContactsClient();
@@ -31,16 +37,40 @@ export class Gateway {
   }
 
   /**
-   * Wraps an async operation with unified error handling,
-   * converting any thrown error into a GatewayResponse.
+   * Build a stable cache key from method name + params.
+   * Object keys are sorted so {a:1,b:2} and {b:2,a:1} produce the same key.
+   */
+  private static cacheKey(method: string, params?: unknown): string {
+    if (params === undefined) return method;
+    return `${method}:${JSON.stringify(params, Object.keys(params as object).sort())}`;
+  }
+
+  /**
+   * Wraps an async operation with unified error handling AND 12-hour caching.
+   * Only successful results are cached; failures bypass the cache entirely.
    */
   async handle<T>(
     fn: () => Promise<T>,
+    cacheName: string,
+    cacheParams?: unknown,
   ): Promise<GatewayResponse<T>> {
+    const key = Gateway.cacheKey(cacheName, cacheParams);
+
+    // Check cache
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.at < Gateway.CACHE_TTL_MS) {
+      return cached.data as GatewayResponse<T>;
+    }
+
     try {
       const data = await fn();
-      return success(data);
+      const result = success(data);
+      this.cache.set(key, { at: Date.now(), data: result });
+      return result;
     } catch (err) {
+      // Never cache failures — remove stale entry if any
+      this.cache.delete(key);
+
       const logger = getLogger();
       logger.error({ err }, "Gateway operation failed");
 
@@ -65,11 +95,11 @@ export class Gateway {
   // -- Contacts convenience methods --
 
   async listDepartments(parentId?: number) {
-    return this.handle(() => this.contacts.listDepartments(parentId));
+    return this.handle(() => this.contacts.listDepartments(parentId), "listDepartments", { parentId });
   }
 
   async getDepartment(departmentId: number) {
-    return this.handle(() => this.contacts.getDepartment(departmentId));
+    return this.handle(() => this.contacts.getDepartment(departmentId), "getDepartment", { departmentId });
   }
 
   async listUsers(
@@ -79,33 +109,33 @@ export class Gateway {
     return this.handle(async () => {
       const result = await this.contacts.listUsers(departmentId, options);
       return { users: result.users, pagination: { total: result.total, hasMore: result.hasMore } };
-    });
+    }, "listUsers", { departmentId, options });
   }
 
   async getUser(userId: string) {
-    return this.handle(() => this.contacts.getUser(userId));
+    return this.handle(() => this.contacts.getUser(userId), "getUser", { userId });
   }
 
   async listSubDepartmentIds(deptId: number) {
     return this.handle(async () => {
       const ids = await this.contacts.listSubDepartmentIds(deptId);
       return { deptIds: ids, total: ids.length };
-    });
+    }, "listSubDepartmentIds", { deptId });
   }
 
   async listDepartmentUserIds(deptId: number) {
     return this.handle(async () => {
       const ids = await this.contacts.listDepartmentUserIds(deptId);
       return { userIds: ids, total: ids.length };
-    });
+    }, "listDepartmentUserIds", { deptId });
   }
 
   async getUserByMobile(mobile: string) {
-    return this.handle(() => this.contacts.getUserByMobile(mobile));
+    return this.handle(() => this.contacts.getUserByMobile(mobile), "getUserByMobile", { mobile });
   }
 
   async getUserByUnionId(unionId: string) {
-    return this.handle(() => this.contacts.getUserByUnionId(unionId));
+    return this.handle(() => this.contacts.getUserByUnionId(unionId), "getUserByUnionId", { unionId });
   }
 
   async searchUsers(params: {
@@ -115,7 +145,7 @@ export class Gateway {
     fullMatchField?: number;
     hydrate?: boolean;
   }) {
-    return this.handle(() => this.contacts.searchUsers(params));
+    return this.handle(() => this.contacts.searchUsers(params), "searchUsers", params);
   }
 
   async searchDepartments(params: {
@@ -124,25 +154,25 @@ export class Gateway {
     size?: number;
     hydrate?: boolean;
   }) {
-    return this.handle(() => this.contacts.searchDepartments(params));
+    return this.handle(() => this.contacts.searchDepartments(params), "searchDepartments", params);
   }
 
   async findDepartments(query: string, limit?: number) {
     return this.handle(async () => {
       const matches = await this.contacts.findDepartments(query, limit);
       return { matches, total: matches.length };
-    });
+    }, "findDepartments", { query, limit });
   }
 
   async findUser(params: { name: string; deptHint?: string; limit?: number }) {
-    return this.handle(() => this.contacts.findUser(params));
+    return this.handle(() => this.contacts.findUser(params), "findUser", params);
   }
 
   async listAllDepartments() {
     return this.handle(async () => {
       const departments = await this.contacts.listAllDepartments();
       return { departments, total: departments.length };
-    });
+    }, "listAllDepartments");
   }
 
   // -- Attendance convenience methods --
@@ -154,7 +184,7 @@ export class Gateway {
     return this.handle(async () => {
       const result = await this.attendance.getAttendanceList(params);
       return { records: result.records, total: result.total };
-    });
+    }, "getAttendanceList", params);
   }
 
   async getLeaveStatus(params: {
@@ -175,14 +205,14 @@ export class Gateway {
         size: params.size,
       });
       return this.wrapPaginated(result.leaves, result.leaves.length, params.offset ?? 0, params.size ?? 20);
-    });
+    }, "getLeaveStatus", params);
   }
 
   async listAttendanceGroups(params: { offset?: number; size?: number } = {}) {
     return this.handle(async () => {
       const groups = await this.attendance.listGroups(params);
       return { groups, total: groups.length };
-    });
+    }, "listAttendanceGroups", params);
   }
 
   async listAttendanceSchedule(params: {
@@ -193,41 +223,43 @@ export class Gateway {
     return this.handle(async () => {
       const result = await this.attendance.listSchedule(params);
       return { schedules: result.schedules, total: result.schedules.length, hasMore: result.hasMore };
-    });
+    }, "listAttendanceSchedule", params);
   }
 
   async getAttendanceGroupDetails(params: { nextToken?: number; maxResults?: number } = {}) {
-    return this.handle(() => this.attendance.getGroupDetails(params));
+    return this.handle(() => this.attendance.getGroupDetails(params), "getAttendanceGroupDetails", params);
   }
 
   // -- Yida convenience methods --
 
   async listYidaApps(): Promise<GatewayResponse<YidaAppConfig[]>> {
-    return this.handle(() => Promise.resolve(this.yida.listApps()));
+    return this.handle(() => Promise.resolve(this.yida.listApps()), "listYidaApps");
   }
 
   async listYidaForms(params: {
-    appName: string;
+    appName?: string;
     pageSize?: number;
     pageNumber?: number;
   }) {
-    return this.handle(() => this.yida.listForms(params));
+    return this.handle(async () => {
+      // appName 留空 → 返回全部应用的表单摘要（替代 list_apps）
+      if (!params.appName) {
+        const apps = this.yida.listApps();
+        const all: Record<string, unknown> = {};
+        for (const app of apps) {
+          try {
+            all[app.name] = await this.yida.listForms({ appName: app.name, pageSize: params.pageSize, pageNumber: params.pageNumber });
+          } catch (e) {
+            all[app.name] = { error: e instanceof Error ? e.message : String(e) };
+          }
+        }
+        return { apps, forms: all };
+      }
+      return this.yida.listForms({ appName: params.appName, pageSize: params.pageSize, pageNumber: params.pageNumber });
+    }, "listYidaForms", params);
   }
 
-  async getYidaFormFields(params: {
-    appName: string;
-    formUuid?: string;
-  }) {
-    return this.handle(() => this.yida.getFormFields(params));
-  }
-
-  async getYidaFormComponents(params: {
-    appName: string;
-    formUuid?: string;
-  }) {
-    return this.handle(() => this.yida.getFormComponents(params));
-  }
-
+  /** Unified query — uses searchFormData (richer metadata) under the hood. */
   async queryYidaFormData(params: {
     appName: string;
     formUuid?: string;
@@ -238,20 +270,10 @@ export class Gateway {
     pageSize?: number;
     pageNumber?: number;
   }) {
-    return this.handle(() => this.yida.queryFormData(params));
-  }
-
-  async searchYidaFormData(params: {
-    appName: string;
-    formUuid?: string;
-    searchFieldJson?: string;
-    originatorId?: string;
-    createFromTimeGMT?: string;
-    createToTimeGMT?: string;
-    pageSize?: number;
-    currentPage?: number;
-  }) {
-    return this.handle(() => this.yida.searchFormData(params));
+    return this.handle(() => this.yida.searchFormData({
+      ...params,
+      currentPage: params.pageNumber,
+    }), "queryYidaFormData", params);
   }
 
   async listYidaProcessInstances(params: {
@@ -266,21 +288,21 @@ export class Gateway {
     pageSize?: number;
     pageNumber?: number;
   }) {
-    return this.handle(() => this.yida.listProcessInstances(params));
+    return this.handle(() => this.yida.listProcessInstances(params), "listYidaProcessInstances", params);
   }
 
+  /** Merged: instance detail + optional approval records in one call. */
   async getYidaProcessInstance(params: {
     appName: string;
     processInstanceId: string;
+    includeRecords?: boolean;
   }) {
-    return this.handle(() => this.yida.getProcessInstance(params));
-  }
-
-  async getYidaOperationRecords(params: {
-    appName: string;
-    processInstanceId: string;
-  }) {
-    return this.handle(() => this.yida.getOperationRecords(params));
+    return this.handle(async () => {
+      const detail = await this.yida.getProcessInstance({ appName: params.appName, processInstanceId: params.processInstanceId });
+      if (!params.includeRecords) return detail;
+      const records = await this.yida.getOperationRecords({ appName: params.appName, processInstanceId: params.processInstanceId });
+      return { ...detail, operationRecords: records };
+    }, "getYidaProcessInstance", params);
   }
 
   /**

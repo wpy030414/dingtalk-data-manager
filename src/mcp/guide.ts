@@ -2,104 +2,65 @@
  * 服务器级说明（MCP `initialize` 的 instructions 字段）。
  * 客户端会把它注入模型上下文，是 Agent 了解「本服务能做什么、该怎么串」的入口。
  */
-export const SERVER_INSTRUCTIONS = `钉钉企业数据网关（只读，无任何写/删操作）。27 个工具，覆盖三个域：
+export const SERVER_INSTRUCTIONS = `钉钉企业数据网关（只读）。18 个工具，三个域：
 
-【通讯录 · 13 个】
-  dingtalk_find_department  ← 模糊部门名定位（推荐）
-  dingtalk_find_user        ← 模糊人名 + 部门线索定位（推荐）
-  dingtalk_list_departments / get_department / list_sub_department_ids / list_all_departments
-  dingtalk_list_users / list_department_user_ids / get_user
-  dingtalk_get_user_by_mobile / get_user_by_unionid
-  dingtalk_search_users / search_departments
+【通讯录 · 10】find_department / find_user / search_users / search_departments / list_users / list_department_user_ids / get_user / get_user_by_mobile / get_user_by_unionid / list_all_departments
 
-【考勤 · 5 个】
-  dingtalk_get_attendance / get_leave_status
-  dingtalk_list_attendance_groups / list_attendance_schedule / get_attendance_group_details
+【考勤 · 4】get_attendance / get_leave_status / list_attendance_schedule / get_attendance_group_details
 
-【宜搭 · 9 个】
-  dingtalk_yida_list_apps / list_forms / get_form_fields / get_form_components
-  dingtalk_yida_query_form_data / search_form_data
-  dingtalk_yida_list_process_instances / get_process_instance / get_operation_records
+【宜搭 · 4】list_forms / query_form_data / list_process_instances / get_process_instance
 
 ── 推荐链路 ──
-1. 模糊找部门：「东校中学2025级」→ dingtalk_find_department(query)，返回带完整路径的候选，取 deptId
-   ⚠️ 不要用 search_departments 搜复合名——钉钉原生搜索是单 token 子串匹配，「东校中学2025级」会 0 命中
-2. 模糊找人：「东校的张老师」→ dingtalk_find_user({name:"张", deptHint:"东校"})
-   只要姓名片段：dingtalk_search_users(queryWord)；要精确同名加 fullMatchField=0
-3. 部门成员：dingtalk_list_department_user_ids（仅 ID，快）或 dingtalk_list_users（含详情）
-4. 某人某天考勤：dingtalk_get_attendance({userIds:[...], workDate:"YYYY-MM-DD"})
-5. 宜搭查数据（formUuid 可选——网关自动补全；userId 对 Agent 完全透明）：
-   ⭐ 先调 dingtalk_yida_list_forms({appName}) → 返回每个表单的 formUuid + fields[{fieldId, label}]
-      一个调用搞定：选表 → 拿 formUuid → 拿 fieldId，三合一
-   单表单应用只需 dingtalk_yida_query_form_data({appName}) 即可拿数据
-   searchFieldJson 的字段 ID 直接用 list_forms 返回的 fieldId，无需再调 get_form_fields
-   需要组件类型等额外元数据时再调 dingtalk_yida_get_form_fields
-6. 审批进度：dingtalk_yida_list_process_instances → get_process_instance / get_operation_records
+找部门：find_department("东校中学2025级") → 取 deptId
+找人：find_user({name:"张", deptHint:"东校"}) → 取 userId → get_attendance / get_user
+查宜搭：list_forms({appName:"外出申请"}) → 拿 formUuid + fieldId → query_form_data({appName, formUuid, searchFieldJson})
+查审批：list_process_instances → get_process_instance({processInstanceId, includeRecords:true})
+留空 appName：list_forms({}) → 返回全部应用及其表单列表
 
 ── 关键约定 ──
-- 所有返回统一信封 { success, data, error?, pagination? }；success=false 时读 error.code / error.message
-- 宜搭所有接口必须传 appName（来自 .env.yml 配置）；userId 由网关自动从表单创建者获取，Agent 无需关心
-- ⚠️ 查询宜搭任何应用前，请先调 dingtalk_yida_list_forms —— 一次调用同时拿到 formUuid、fieldId、中文标签
-- 宜搭 searchFieldJson 是【包含匹配】的模糊搜索，格式 '{"字段ID":"关键词"}'（如 '{"textField_mr4at0xc":"无人机"}'）
-  字段 ID 直接用 dingtalk_yida_list_forms 返回的 fieldId，通常无需再调 get_form_fields
-- 宜搭表单数据的 key 是字段 ID（如 textField_mr4at0xc），对照 list_forms 返回的 label 解读
-- 考勤打卡接口只支持单用户，网关已自动批处理，直接传 userIds 数组
-- 大结果集优先用「仅 ID」工具（list_department_user_ids / list_sub_department_ids）再按需补详情
-- 部门/用户接口只返回**直属**成员，不含下级部门；需要下级时用 list_sub_department_ids 递归
-- 全部工具均标注 readOnlyHint=true / destructiveHint=false / idempotentHint=true，可安全重试`;
+- 返回统一信封 { success, data, error?, pagination? }
+- 宜搭 searchFieldJson 是包含匹配（模糊），格式 '{"textField_xxx":"关键词"}'
+- 宜搭 userId 由网关自动获取，Agent 无需关心
+- 部门/用户搜索只返回直属成员；需要下级时用 list_all_departments 拿完整树`;
 
 /**
  * 通过 MCP Resource 暴露的完整接口清单（Agent 可按需读取，不占用初始上下文）。
  */
 export const GUIDE_MARKDOWN = `# 钉钉数据网关 · 接口速查
 
-## 认证
-GET https://oapi.dingtalk.com/gettoken?appkey={ClientID}&appsecret={ClientSecret}
-→ {access_token, expires_in}；网关内部自动缓存/刷新，业务层无感。
+## 通讯录（10 工具）
+| 工具 | 说明 |
+|---|---|
+| find_department | 模糊路径名定位部门，支持复合名 |
+| find_user | 模糊人名+部门线索定位用户 |
+| search_users | 按姓名/拼音/工号搜人（单token子串匹配） |
+| search_departments | 按关键词搜部门（单token子串匹配） |
+| list_users | 列出部门直属成员及完整档案 |
+| list_department_user_ids | 获取部门下全部用户ID（仅ID） |
+| get_user | 获取单个用户完整档案 |
+| get_user_by_mobile | 按手机号查用户 |
+| get_user_by_unionid | 按 unionId 查用户 |
+| list_all_departments | 全公司部门树（缓存5分钟） |
 
-## 通讯录（两代 API 混用）
-| 工具 | 方法 | 完整 URL |
-|---|---|---|
-| list_departments | POST | https://oapi.dingtalk.com/topapi/v2/department/listsub |
-| get_department | POST | https://oapi.dingtalk.com/topapi/v2/department/get |
-| list_sub_department_ids | POST | https://oapi.dingtalk.com/topapi/v2/department/listsubid |
-| list_all_departments | GET  | https://oapi.dingtalk.com/department/list  ← 唯一走 GET 的 OAPI |
-| find_department | —（本地） | 基于 /department/list 全量缓存做路径匹配 |
-| find_user | —（本地） | search_users + 部门成员名单交叉过滤 |
-| list_users | POST | https://oapi.dingtalk.com/topapi/v2/user/list |
-| list_department_user_ids | POST | https://oapi.dingtalk.com/topapi/user/listid |
-| get_user | POST | https://oapi.dingtalk.com/topapi/v2/user/get |
-| get_user_by_mobile | POST | https://oapi.dingtalk.com/topapi/v2/user/getbymobile |
-| get_user_by_unionid | POST | https://oapi.dingtalk.com/topapi/user/getbyunionid |
-| search_users | POST | https://api.dingtalk.com/v1.0/contact/users/search |
-| search_departments | POST | https://api.dingtalk.com/v1.0/contact/departments/search |
+## 考勤（4 工具）
+| 工具 | 说明 |
+|---|---|
+| get_attendance | 某天的考勤打卡结果，支持批量 |
+| get_leave_status | 时间段内请假/缺勤记录 |
+| list_attendance_schedule | 指定日期全公司排班 |
+| get_attendance_group_details | 考勤组详情（游标分页） |
 
-## 考勤（两代 API 混用）
-| 工具 | 方法 | 完整 URL |
-|---|---|---|
-| get_attendance | POST | https://oapi.dingtalk.com/topapi/attendance/getupdatedata |
-| get_leave_status | POST | https://oapi.dingtalk.com/topapi/attendance/getleavestatus |
-| list_attendance_groups | POST | https://oapi.dingtalk.com/topapi/attendance/getsimplegroups |
-| list_attendance_schedule | POST | https://oapi.dingtalk.com/topapi/attendance/listschedule |
-| get_attendance_group_details | GET | https://api.dingtalk.com/v1.0/attendance/groupDetails |
+## 宜搭（4 工具）
+| 工具 | 说明 |
+|---|---|
+| list_forms | 列出应用及表单（含 fieldId+标签+组件类型）。appName 留空返回全部应用 |
+| query_form_data | 查询表单实例数据（分页，searchFieldJson 模糊搜索） |
+| list_process_instances | 查询流程实例列表 |
+| get_process_instance | 流程实例详情 + 可选审批记录（includeRecords） |
 
-## 宜搭（全部新版 API，域名 https://api.dingtalk.com）
-| 工具 | 方法 | 完整 URL |
-|---|---|---|
-| yida_list_forms | GET | /v1.0/yida/forms |
-| yida_get_form_fields | GET | /v1.0/yida/forms/formFields |
-| yida_get_form_components | GET | /v1.0/yida/forms/definitions/{appType}/{formUuid} |
-| yida_query_form_data | POST | /v1.0/yida/forms/instances/query |
-| yida_search_form_data | POST | /v1.0/yida/forms/instances/search |
-| yida_list_process_instances | POST | /v1.0/yida/processes/instances |
-| yida_get_process_instance | GET | /v1.0/yida/processes/instancesInfos/{id} |
-| yida_get_operation_records | GET | /v1.0/yida/processes/operationRecords |
-
-宜搭所有接口的 userId 由网关自动从表单创建者获取，Agent/用户均无需关心。
-
-## 搜索语义（重要）
-- **通讯录 search_users / search_departments**：单 token 子串匹配。复合查询如「东校中学2025级」会 0 命中 → 用 dingtalk_find_department
-- **dingtalk_find_user**：先按姓名搜人，再用部门成员名单交叉过滤，解决「东校的张老师」
-- **宜搭 searchFieldJson**：包含匹配（模糊）。"津" 能命中 "天津"，"无人机" 能命中长文本事由
+## 搜索语义
+- search_users / search_departments：单 token 子串匹配，复合查询用 find_*
+- 宜搭 searchFieldJson：包含匹配（模糊）
+- find_department：切词后在部门树上按祖先路径匹配
+- find_user：有部门线索时先取花名册再本地匹配
 `;
-
