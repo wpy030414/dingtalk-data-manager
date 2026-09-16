@@ -1,5 +1,4 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { randomUUID } from "node:crypto";
 import { getLogger } from "../lib/logger.js";
@@ -106,22 +105,4 @@ export async function createSessionPair(
   await server.connect(transport);
 
   return { transport, server, createdAt: Date.now() };
-}
-
-// ── Stdio (single-session) ───────────────────────────────────────────
-
-/**
- * Starts the MCP server with stdio transport.
- * Used by Claude Desktop and other tools that launch the server as a subprocess.
- */
-export async function startStdioServer(): Promise<void> {
-  const logger = getLogger();
-  const server = createMcpServer();
-  const transport = new StdioServerTransport();
-
-  logger.info("Starting DingTalk MCP server on stdio transport...");
-
-  await server.connect(transport);
-
-  logger.info("DingTalk MCP server (stdio) is ready");
 }

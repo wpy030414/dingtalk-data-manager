@@ -94,7 +94,8 @@ export async function startHttpServer(port: number): Promise<void> {
       // Existing session — route to its transport
       const pair = sessions.get(sessionId);
       if (!pair) {
-        logger.warn({ sessionId }, "Unknown MCP session ID");
+        // Session expired or server restarted — normal, client will re-initialize
+        logger.info({ sessionId }, "Stale MCP session ID, returning 404");
         sendJsonError(res, 404, "Session not found");
         return;
       }
