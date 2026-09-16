@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ContactsService } from "@/services/contacts-service.ts";
 import type { ContactsClient, UserRaw } from "@/clients/contacts-client.ts";
 
+/** Simpler raw-like department structure for listAllDepartments mock. */
+function makeDept(id: number, name: string, parentid: number) {
+  return { id, name, parentid };
+}
+
 /** Build a raw OAPI user payload (snake_case, as returned by DingTalk). */
 function userRaw(overrides: Partial<UserRaw> = {}): UserRaw {
   return {
@@ -72,15 +77,18 @@ function createMockClient(overrides: Partial<ContactsClient> = {}): ContactsClie
       errcode: 0,
       errmsg: "ok",
       department: [
-        { id: 1, name: "根部门", parentid: 0 },
-        { id: 10, name: "东校", parentid: 1 },
-        { id: 100, name: "中学", parentid: 10 },
-        { id: 1000, name: "2025级", parentid: 100 },
-        { id: 101, name: "小学", parentid: 10 },
-        { id: 1010, name: "2025级", parentid: 101 },
-        { id: 20, name: "繁华校区", parentid: 1 },
-        { id: 200, name: "中学", parentid: 20 },
-        { id: 2000, name: "2025级", parentid: 200 },
+        makeDept(1, "根部门", 0),
+        makeDept(-7, "家校通讯录", 1),
+        makeDept(-8, "一年级家长", -7),
+        makeDept(-9, "1班家长", -8),
+        makeDept(10, "东校", 1),
+        makeDept(100, "中学", 10),
+        makeDept(1000, "2025级", 100),
+        makeDept(101, "小学", 10),
+        makeDept(1010, "2025级", 101),
+        makeDept(20, "繁华校区", 1),
+        makeDept(200, "中学", 20),
+        makeDept(2000, "2025级", 200),
       ],
     }),
     ...overrides,
@@ -350,6 +358,51 @@ describe("ContactsService", () => {
       const result = await service.findUser({ name: "张", deptHint: "东校中学2025级" });
       expect(result.users).toEqual([]);
       expect(result.hint).toMatch(/没有匹配/);
+    });
+  });
+
+  describe("家校通讯录过滤", () => {
+    it("listAllDepartments 默认排除家校通讯录整棵子树", async () => {
+      const list = await service.listAllDepartments();
+      const ids = list.map((d) => d.id);
+      expect(ids).not.toContain(-7);
+      expect(ids).not.toContain(-8);
+      expect(ids).not.toContain(-9);
+      // 行政部门的部门应该还在
+      expect(ids).toContain(10);  // 东校
+      expect(ids).toContain(1000); // 2025级
+    });
+
+    it("listAllDepartments includeHomeSchool=true 时包含家校通讯录", async () => {
+      const list = await service.listAllDepartments(false, true);
+      const ids = list.map((d) => d.id);
+      expect(ids).toContain(-7);
+      expect(ids).toContain(-8);
+      expect(ids).toContain(-9);
+    });
+
+    it("findDepartments 默认不匹配家校通讯录内的部门", async () => {
+      const matches = await service.findDepartments("家长");
+      expect(matches.map((m) => m.id)).not.toContain(-8);
+      expect(matches.map((m) => m.id)).not.toContain(-9);
+    });
+
+    it("findDepartments includeHomeSchool=true 时匹配家校通讯录部门", async () => {
+      const matches = await service.findDepartments("家长", 10, true);
+      expect(matches.map((m) => m.id)).toContain(-8);
+    });
+
+    it("findUser deptHint 默认不解析到家校通讯录部门", async () => {
+      const result = await service.findUser({ name: "张", deptHint: "家长" });
+      expect(result.hint).toMatch(/未匹配到任何部门/);
+    });
+
+    it("findUser deptHint includeHomeSchool=true 时解析到家校通讯录部门", async () => {
+      // 家校通讯录→一年级家长(-8)→1班家长(-9)，findDepartments 按深度降序返回
+      // "家长" 匹配到 -8 和 -9，-9 更深排在前面
+      const result = await service.findUser({ name: "张", deptHint: "家长", includeHomeSchool: true });
+      expect(result.dept).toBeDefined();
+      expect(result.dept!.id).toBe(-9);
     });
   });
 });

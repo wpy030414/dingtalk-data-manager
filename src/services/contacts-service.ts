@@ -23,6 +23,51 @@ export class ContactsService {
 
   constructor(private readonly client: ContactsClient) {}
 
+  // ── 家校通讯录过滤 ────────────────────────────────────────────────
+
+  /**
+   * 从全量部门列表中动态识别家校通讯录根节点。
+   * 策略：parentId=1（根）的直接子节点里，名称包含 "家校" 的。
+   * "家校" 是钉钉系统部门的标准中文名，跨组织通用。
+   */
+  private detectHomeSchoolRootIds(
+    all: Array<{ id: number; name: string; parentId: number }>,
+  ): number[] {
+    return all
+      .filter((d) => d.parentId === 1 && d.name.includes("家校"))
+      .map((d) => d.id);
+  }
+
+  /** 递归收集 rootIds 的所有子孙 ID（含自身），用于子树整体排除。 */
+  private collectDescendantIds(
+    rootIds: number[],
+    all: Array<{ id: number; name: string; parentId: number }>,
+  ): Set<number> {
+    const result = new Set<number>();
+    const stack = [...rootIds];
+    while (stack.length) {
+      const id = stack.pop()!;
+      result.add(id);
+      for (const d of all) {
+        if (d.parentId === id) stack.push(d.id);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 从全量部门列表中排除家校通讯录整棵子树。
+   * deptCache 始终存全量 —— 过滤只在返回值上做。
+   */
+  private filterHomeSchool(
+    list: Array<{ id: number; name: string; parentId: number }>,
+  ): Array<{ id: number; name: string; parentId: number }> {
+    const roots = this.detectHomeSchoolRootIds(list);
+    if (roots.length === 0) return list;
+    const exclude = this.collectDescendantIds(roots, list);
+    return list.filter((d) => !exclude.has(d.id));
+  }
+
   /**
    * List all departments, optionally filtered by parent.
    */
@@ -179,6 +224,7 @@ export class ContactsService {
     name: string;
     deptHint?: string;
     limit?: number;
+    includeHomeSchool?: boolean;
   }): Promise<{
     users: User[];
     total: number;
@@ -186,6 +232,7 @@ export class ContactsService {
     hint?: string;
   }> {
     const limit = params.limit ?? 10;
+    const includeHomeSchool = params.includeHomeSchool ?? false;
 
     // 没有部门线索：直接按姓名搜（钉钉按姓名/拼音/工号子串匹配）
     if (!params.deptHint) {
@@ -196,7 +243,7 @@ export class ContactsService {
       return { users: search.users.slice(0, limit), total: search.total };
     }
 
-    const depts = await this.findDepartments(params.deptHint, 1);
+    const depts = await this.findDepartments(params.deptHint, 1, includeHomeSchool);
     const dept = depts[0];
     if (!dept) {
       return {
@@ -237,10 +284,19 @@ export class ContactsService {
   /**
    * 全公司部门（一次性拉取并缓存 5 分钟）。
    * 旧版 /department/list 返回 id/name/parentid，与 v2 接口的 dept_id/parent_id 命名不同。
+   *
+   * @param force      跳过缓存强制刷新
+   * @param includeHomeSchool  默认 false，排除家校通讯录子树
    */
-  async listAllDepartments(force = false): Promise<Array<{ id: number; name: string; parentId: number }>> {
+  async listAllDepartments(
+    force = false,
+    includeHomeSchool = false,
+  ): Promise<Array<{ id: number; name: string; parentId: number }>> {
     if (!force && this.deptCache && Date.now() - this.deptCache.at < ContactsService.DEPT_CACHE_TTL_MS) {
-      return this.deptCache.list;
+      const list = includeHomeSchool
+        ? this.deptCache.list
+        : this.filterHomeSchool(this.deptCache.list);
+      return list;
     }
     const raw = await this.client.getAllDepartments();
     const list = (raw.department ?? raw.result ?? []).map((d) => ({
@@ -249,7 +305,7 @@ export class ContactsService {
       parentId: d.parentid,
     }));
     this.deptCache = { at: Date.now(), list };
-    return list;
+    return includeHomeSchool ? list : this.filterHomeSchool(list);
   }
 
   /**
@@ -259,8 +315,8 @@ export class ContactsService {
    * 这里改为：把查询切成 token（有空格按空格切；无空格则用已知部门名做最长匹配切分），
    * 再在全量部门树里找「祖先路径包含全部 token」的部门，按路径深度降序返回最具体的。
    */
-  async findDepartments(query: string, limit = 10): Promise<DepartmentMatch[]> {
-    const all = await this.listAllDepartments();
+  async findDepartments(query: string, limit = 10, includeHomeSchool = false): Promise<DepartmentMatch[]> {
+    const all = await this.listAllDepartments(false, includeHomeSchool);
     const byId = new Map(all.map((d) => [d.id, d]));
     const nameSet = new Set(all.map((d) => d.name));
     const tokens = ContactsService.segmentQuery(query, nameSet);

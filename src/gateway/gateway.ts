@@ -212,22 +212,22 @@ export class Gateway {
     return this.handle(() => this.contacts.searchDepartments(params), "searchDepartments", params);
   }
 
-  async findDepartments(query: string, limit?: number) {
+  async findDepartments(query: string, limit?: number, includeHomeSchool?: boolean) {
     return this.handle(async () => {
-      const matches = await this.contacts.findDepartments(query, limit);
+      const matches = await this.contacts.findDepartments(query, limit, includeHomeSchool);
       return { matches, total: matches.length };
-    }, "findDepartments", { query, limit });
+    }, "findDepartments", { query, limit, includeHomeSchool });
   }
 
-  async findUser(params: { name: string; deptHint?: string; limit?: number }) {
+  async findUser(params: { name: string; deptHint?: string; limit?: number; includeHomeSchool?: boolean }) {
     return this.handle(() => this.contacts.findUser(params), "findUser", params);
   }
 
-  async listAllDepartments() {
+  async listAllDepartments(includeHomeSchool?: boolean) {
     return this.handle(async () => {
-      const departments = await this.contacts.listAllDepartments();
+      const departments = await this.contacts.listAllDepartments(false, includeHomeSchool);
       return { departments, total: departments.length };
-    }, "listAllDepartments");
+    }, "listAllDepartments", { includeHomeSchool });
   }
 
   // -- Attendance convenience methods --

@@ -13,10 +13,11 @@ export function registerContactsTools(server: McpServer): void {
     {
       query: z.string().min(1).describe("模糊部门名，如「东校中学2025级」「校长室」"),
       limit: z.number().int().min(1).max(50).default(10).describe("最多返回条数"),
+      includeHomeSchool: z.boolean().default(false).describe("默认 false，排除家校通讯录子树；true 则包含"),
     },
     READ_ONLY,
-    async ({ query, limit }) => {
-      const result = await gateway.findDepartments(query, limit);
+    async ({ query, limit, includeHomeSchool }) => {
+      const result = await gateway.findDepartments(query, limit, includeHomeSchool);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -28,10 +29,11 @@ export function registerContactsTools(server: McpServer): void {
       name: z.string().min(1).describe("人名或姓名片段，如「张」「张思杰」（支持拼音）"),
       deptHint: z.string().optional().describe("部门线索，如「东校中学2025级」。留空则只按姓名搜"),
       limit: z.number().int().min(1).max(20).default(10).describe("最多返回条数"),
+      includeHomeSchool: z.boolean().default(false).describe("默认 false，deptHint 不匹配家校通讯录部门；true 则包含"),
     },
     READ_ONLY,
-    async ({ name, deptHint, limit }) => {
-      const result = await gateway.findUser({ name, deptHint, limit });
+    async ({ name, deptHint, limit, includeHomeSchool }) => {
+      const result = await gateway.findUser({ name, deptHint, limit, includeHomeSchool });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -137,11 +139,13 @@ export function registerContactsTools(server: McpServer): void {
 
   server.tool(
     "dingtalk_list_all_departments",
-    "一次性获取全公司部门树（id/name/parentId，约900个，缓存5分钟）",
-    {},
+    "一次性获取全公司部门树（id/name/parentId，约900个，缓存5分钟）。默认排除家校通讯录子树",
+    {
+      includeHomeSchool: z.boolean().default(false).describe("默认 false，排除家校通讯录子树；true 则包含"),
+    },
     READ_ONLY,
-    async () => {
-      const result = await gateway.listAllDepartments();
+    async ({ includeHomeSchool }) => {
+      const result = await gateway.listAllDepartments(includeHomeSchool);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
