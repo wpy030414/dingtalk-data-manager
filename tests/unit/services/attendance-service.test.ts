@@ -181,7 +181,7 @@ describe("AttendanceService", () => {
   it("should normalize the new-style group details with cursor pagination", async () => {
     const result = await service.getGroupDetails({ maxResults: 10 });
     expect(result.hasMore).toBe(true);
-    expect(result.nextToken).toBe(20);
+    expect(result.nextCursor).toBe(20);
     expect(result.groups[0]).toEqual({
       groupId: 1426660566,
       groupName: "东校教师哺乳假",

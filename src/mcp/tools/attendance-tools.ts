@@ -57,12 +57,13 @@ export function registerAttendanceTools(server: McpServer): void {
     "dingtalk_get_attendance_group_details",
     "获取考勤组详情（成员数、考勤类型、班次列表），游标分页",
     {
-      nextToken: z.number().int().min(0).default(0).describe("游标，首次传 0"),
-      maxResults: z.number().int().min(1).max(100).default(20).describe("每页条数"),
+      cursor: z.number().int().min(0).optional()
+        .describe("⚠️ 分页游标，必须传上一页响应中的 nextCursor 字段值，严禁自行加 offset 推算。首次查询不传此参数"),
+      size: z.number().int().min(1).max(100).default(20).describe("每页条数"),
     },
     READ_ONLY,
-    async ({ nextToken, maxResults }) => {
-      const result = await gateway.getAttendanceGroupDetails({ nextToken, maxResults });
+    async ({ cursor, size }) => {
+      const result = await gateway.getAttendanceGroupDetails({ cursor, size });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );

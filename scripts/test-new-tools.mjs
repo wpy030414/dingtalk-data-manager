@@ -95,7 +95,7 @@ async function main() {
     console.log(`     - ${s.userId} | ${s.planCheckTime} | ${s.checkType}`);
   }
 
-  const gd = await tool("dingtalk_get_attendance_group_details", { maxResults: 3 });
+  const gd = await tool("dingtalk_get_attendance_group_details", { size: 3 });
   ok("dingtalk_get_attendance_group_details", gd?.success && gd.data.groups.length > 0,
      `${gd?.data?.groups?.length} 个, hasMore=${gd?.data?.hasMore}`);
   if (gd?.success) for (const g of gd.data.groups) {

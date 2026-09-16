@@ -104,10 +104,10 @@ find_user({name:"夏", deptHint:"东校中学2025级"})
 | `dingtalk_get_leave_status` | POST | `https://oapi.dingtalk.com/topapi/attendance/getleavestatus` | `userid_list`（逗号分隔）, `start_time`, `end_time`（毫秒时间戳） |
 | `dingtalk_list_attendance_groups` | POST | `https://oapi.dingtalk.com/topapi/attendance/getsimplegroups` | `offset`, `size` |
 | `dingtalk_list_attendance_schedule` | POST | `https://oapi.dingtalk.com/topapi/attendance/listschedule` | `workDate`, `offset`, `size` |
-| `dingtalk_get_attendance_group_details` | GET | `https://api.dingtalk.com/v1.0/attendance/groupDetails` | `nextToken`（游标，首次 0）, `maxResults` |
+| `dingtalk_get_attendance_group_details` | GET | `https://api.dingtalk.com/v1.0/attendance/groupDetails` | `cursor`（游标，首次不传）, `size` |
 
 > `getupdatedata` 只接受单用户，`AttendanceService` 内部自动遍历 `userIds` 逐个拉取并合并结果。
-> `getsimplegroups`（旧版）与 `groupDetails`（新版）都返回考勤组，但字段命名与分页方式不同（`offset/size` vs `nextToken/maxResults`）——两者都保留以覆盖不同场景。
+> `getsimplegroups`（旧版）与 `groupDetails`（新版）都返回考勤组，但字段命名与分页方式不同（`offset/size` vs 游标 `cursor/size`）——两者都保留以覆盖不同场景。
 
 ### 已探明但未接入（通讯录 / 考勤）
 

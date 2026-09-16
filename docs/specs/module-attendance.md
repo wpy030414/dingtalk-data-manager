@@ -8,10 +8,10 @@
 - 按时间段查询请假/缺勤状态
 - 考勤组列表（旧版 API，含班次名称）
 - 排班查询（旧版 API，按天全公司）
-- 考勤组详情（新版 API，游标分页，含成员数/考勤类型）
+- 考勤组详情（新版 API，游标分页：cursor 取上一页 nextCursor 回传，首次不传）
 
 ## 输入 / 输出
-- **输入**：userIds（数组）、workDate/fromDate/toDate（YYYY-MM-DD）、时间戳（毫秒）、游标
+- **输入**：userIds（数组）、workDate/fromDate/toDate（YYYY-MM-DD）、时间戳（毫秒）、游标 cursor
 - **输出**：`{ success, data: { records/leaves/groups/schedules }, pagination? }`
   - 打卡记录：checkType（OnDuty/OffDuty）、timeResult（Normal/Late/Early/...）、计划/实际打卡时间
   - 请假：leaveType、duration、startTime/endTime（ISO 字符串）
@@ -21,7 +21,7 @@
 - 横跨两代 API：旧版 `oapi.dingtalk.com/topapi/attendance/...`（表单编码） + 新版 `api.dingtalk.com/v1.0/attendance/...`（JSON）
 - **最关键的约束**：`getupdatedata` 只接受**单个** userid，网关内部 for 循环逐人调用、跳过失败的
 - `getleavestatus` 的 `start_time`/`end_time` 是毫秒时间戳
-- 考勤组新旧两版字段命名和分页方式不同（`offset/size` vs `nextToken/maxResults`）
+- 考勤组新旧两版字段命名和分页方式不同（`offset/size` vs 游标 `cursor/size`）
 - `checkin/records/query` 需要 `qyapi_checkin_read` 权限——未接入
 
 ## 边界条件

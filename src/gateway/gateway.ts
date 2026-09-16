@@ -281,8 +281,12 @@ export class Gateway {
     }, "listAttendanceSchedule", params);
   }
 
-  async getAttendanceGroupDetails(params: { nextToken?: number; maxResults?: number } = {}) {
-    return this.handle(() => this.attendance.getGroupDetails(params), "getAttendanceGroupDetails", params);
+  async getAttendanceGroupDetails(params: { cursor?: number; size?: number } = {}) {
+    return this.handle(
+      () => this.attendance.getGroupDetails({ nextToken: params.cursor, maxResults: params.size }),
+      "getAttendanceGroupDetails",
+      params,
+    );
   }
 
   // -- Yida convenience methods --

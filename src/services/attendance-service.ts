@@ -152,7 +152,7 @@ export class AttendanceService {
   async getGroupDetails(params: { nextToken?: number; maxResults?: number } = {}): Promise<{
     groups: AttendanceGroupDetail[];
     hasMore: boolean;
-    nextToken?: number;
+    nextCursor?: number;
   }> {
     const raw = await this.client.getGroupDetails(params);
     return {
@@ -167,7 +167,7 @@ export class AttendanceService {
         disableCheckWithoutSchedule: g.disableCheckWithoutSchedule,
       })),
       hasMore: raw.result?.hasMore ?? false,
-      nextToken: raw.result?.nextToken,
+      nextCursor: raw.result?.nextToken,
     };
   }
 }
