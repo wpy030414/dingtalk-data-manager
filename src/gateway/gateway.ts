@@ -16,7 +16,8 @@ import type { YidaAppConfig } from "../config/schema.js";
  * call this gateway, never the individual services directly.
  *
  * All public methods cache successful results for 12 hours (keyed by
- * method name + serialized params). Failed results are never cached.
+ * method name + stable serialized params). Failed results are never cached.
+ * Cache uses LRU eviction (max 1000 entries) and supports manual invalidation.
  */
 export class Gateway {
   readonly contacts: ContactsService;
@@ -24,6 +25,7 @@ export class Gateway {
   readonly yida: YidaService;
 
   private static readonly CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+  private static readonly MAX_CACHE_SIZE = 1000;
   private cache = new Map<string, { at: number; data: unknown }>();
 
   constructor() {
@@ -37,17 +39,32 @@ export class Gateway {
   }
 
   /**
-   * Build a stable cache key from method name + params.
-   * Object keys are sorted so {a:1,b:2} and {b:2,a:1} produce the same key.
+   * Deep stable serialization: recursively sorts object keys so that
+   * {a:1,b:{d:2,c:1}} and {b:{c:1,d:2},a:1} produce identical strings.
    */
-  private static cacheKey(method: string, params?: unknown): string {
-    if (params === undefined) return method;
-    return `${method}:${JSON.stringify(params, Object.keys(params as object).sort())}`;
+  private static stableStringify(val: unknown): string {
+    if (val === null || val === undefined) return String(val);
+    if (typeof val !== "object") return JSON.stringify(val);
+    if (Array.isArray(val)) {
+      return `[${val.map((v) => Gateway.stableStringify(v)).join(",")}]`;
+    }
+    const obj = val as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${Gateway.stableStringify(obj[k])}`).join(",")}}`;
   }
 
   /**
-   * Wraps an async operation with unified error handling AND 12-hour caching.
+   * Build a stable cache key from method name + params.
+   */
+  private static cacheKey(method: string, params?: unknown): string {
+    if (params === undefined) return method;
+    return `${method}:${Gateway.stableStringify(params)}`;
+  }
+
+  /**
+   * Wraps an async operation with unified error handling AND caching.
    * Only successful results are cached; failures bypass the cache entirely.
+   * LRU eviction: on cache miss, moves accessed entries to end of iteration order.
    */
   async handle<T>(
     fn: () => Promise<T>,
@@ -56,21 +73,30 @@ export class Gateway {
   ): Promise<GatewayResponse<T>> {
     const key = Gateway.cacheKey(cacheName, cacheParams);
 
-    // Check cache
+    // Check cache (LRU: delete + re-insert to move to end)
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.at < Gateway.CACHE_TTL_MS) {
+      this.cache.delete(key);
+      this.cache.set(key, cached);
       return cached.data as GatewayResponse<T>;
     }
+
+    // Evict expired entry if any
+    if (cached) this.cache.delete(key);
 
     try {
       const data = await fn();
       const result = success(data);
+
+      // Evict oldest entry if at capacity (Map iterates in insertion order)
+      if (this.cache.size >= Gateway.MAX_CACHE_SIZE) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest !== undefined) this.cache.delete(oldest);
+      }
+
       this.cache.set(key, { at: Date.now(), data: result });
       return result;
     } catch (err) {
-      // Never cache failures — remove stale entry if any
-      this.cache.delete(key);
-
       const logger = getLogger();
       logger.error({ err }, "Gateway operation failed");
 
@@ -89,6 +115,23 @@ export class Gateway {
       }
 
       return error("INTERNAL_ERROR", String(err));
+    }
+  }
+
+  /**
+   * Invalidate all cached results, or only those matching a method name prefix.
+   * Example: invalidateCache("findUser") clears all findUser caches.
+   *         invalidateCache() clears everything.
+   */
+  invalidateCache(prefix?: string): void {
+    if (!prefix) {
+      this.cache.clear();
+      return;
+    }
+    for (const key of this.cache.keys()) {
+      if (key === prefix || key.startsWith(`${prefix}:`)) {
+        this.cache.delete(key);
+      }
     }
   }
 
