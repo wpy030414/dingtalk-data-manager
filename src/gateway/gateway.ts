@@ -259,7 +259,7 @@ export class Gateway {
         offset: params.offset,
         size: params.size,
       });
-      return this.wrapPaginated(result.leaves, result.leaves.length, params.offset ?? 0, params.size ?? 20);
+      return { leaves: result.leaves, total: result.leaves.length };
     }, "getLeaveStatus", params);
   }
 

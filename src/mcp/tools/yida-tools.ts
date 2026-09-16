@@ -20,7 +20,7 @@ const P = {
   formUuid: () =>
     z.string().min(1).optional().describe("表单 UUID（FORM- 开头），不传时自动取第一个"),
   searchFieldJson: () =>
-    z.string().optional().describe("字段过滤，JSON 格式 '{\"字段ID\":\"关键词\"}'，包含匹配。字段ID 从 list_forms 获取"),
+    z.string().optional().describe("字段过滤，JSON 格式 '{\"字段ID\":\"关键词\"}'，包含匹配。字段ID 从 list_forms 获取。⚠️ 不要用带 _id 后缀的 fieldId（那是关联表单实例 ID，用无后缀的筛选）"),
   originatorId: () =>
     z.string().optional().describe("按提交人过滤（钉钉 userId）"),
   gmtFrom: (label: string) =>
@@ -44,7 +44,7 @@ export function registerYidaTools(server: McpServer): void {
 
   server.tool(
     "dingtalk_yida_list_forms",
-    "列出应用下全部表单（含 fieldId+中文标签+组件类型）。appName 留空返回全部应用列表",
+    "列出应用下全部表单（含 fieldId+中文标签+组件类型）。appName 留空返回全部应用列表。\n\n⚠️ 宜搭关联表单字段会同时出现 radioField_xxx 和 radioField_xxx_id：前者存显示文本（用于 searchFieldJson 筛选），后者存表单实例 ID。构造 searchFieldJson 时用无 _id 后缀的 fieldId。",
     {
       appName: P.appName(),
       pageSize: P.pageSize(),
