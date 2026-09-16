@@ -35,7 +35,19 @@ export class Gateway {
 
     this.contacts = new ContactsService(contactsClient);
     this.attendance = new AttendanceService(attendanceClient);
-    this.yida = new YidaService(yidaClient);
+    // 宜搭 bootstrap：从通讯录拿任意管理员 userId 做种子调用，自动发现应用创建者后缓存
+    this.yida = new YidaService(yidaClient, async (appName: string) => {
+      await this.contacts.listAllDepartments(); // 确保部门缓存已预热
+      const rootUsers = await this.contacts.listUsers(1, { includeDeactivated: false });
+      const admin = rootUsers.users.find((u) => u.admin || u.boss) ?? rootUsers.users[0];
+      if (!admin) {
+        throw new Error(
+          `Cannot bootstrap Yida auth for "${appName}": no active user found in root department. ` +
+          `Please verify DingTalk API credentials are correct.`,
+        );
+      }
+      return admin.userId;
+    });
   }
 
   /**

@@ -14,7 +14,7 @@ import { gateway } from "../../gateway/gateway.js";
 /** 每个参数都新建 zod 实例，避免 zod→JSON Schema 时生成 $ref。 */
 const P = {
   appName: () =>
-    z.string().min(1).optional().describe("宜搭应用名。留空返回全部应用及其表单列表"),
+    z.string().optional().describe("宜搭应用名。留空返回全部应用及其表单列表"),
   appNameReq: () =>
     z.string().min(1).describe("宜搭应用名，须与 .env.yml 中 YidaApps[].name 一致"),
   formUuid: () =>

@@ -85,7 +85,16 @@ export interface OperationRecord {
 }
 
 export class YidaService {
-  constructor(private readonly client: YidaClient) {}
+  /**
+   * @param client         Yida API client
+   * @param resolveBootstrapUserId  (appName) → an arbitrary DingTalk userId for the initial API call.
+   *                                Called exactly once per app, when no explicit userId is available.
+   *                                The result is discarded after the app creator userId is discovered.
+   */
+  constructor(
+    private readonly client: YidaClient,
+    private readonly resolveBootstrapUserId?: (appName: string) => Promise<string>,
+  ) {}
 
   /** 表单摘要缓存：应用→表单列表（含 creator 和字段名） */
   private formCache = new Map<string, { at: number; forms: FormSummary[] }>();
@@ -188,9 +197,11 @@ export class YidaService {
         `${apps.map((a) => a.name).join(", ") || "(none)"}`,
       );
     }
-    // Attempt listForms without userId — Yida API requires it, so this may fail.
-    // If it succeeds, the creator is cached and usable for subsequent calls.
-    const ctx: YidaContext = { appType: app.appId, systemToken: app.systemToken };
+    // 从通讯录模块拿任意一个管理员的 userId 做种子调用，拿到 creator 后缓存
+    const seedUserId = this.resolveBootstrapUserId
+      ? await this.resolveBootstrapUserId(appName)
+      : undefined;
+    const ctx: YidaContext = { appType: app.appId, systemToken: app.systemToken, userId: seedUserId };
     await this.loadFormsCached(appName, ctx);
   }
 

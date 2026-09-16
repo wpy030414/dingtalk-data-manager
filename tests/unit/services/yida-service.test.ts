@@ -132,12 +132,13 @@ describe("YidaService", () => {
 
   it("should auto-bootstrap userId from form creator when not provided", async () => {
     const bootstrapClient = createMockClient();
-    service = new YidaService(bootstrapClient);
+    // 模拟通讯录回调：返回一个种子 userId 用于 bootstrap
+    service = new YidaService(bootstrapClient, async () => "seed-admin-001");
     const forms = await service.listForms({ appName: "学生外出参赛申请" });
     expect(forms).toHaveLength(1);
     // bootstrap 内部调了一次 listForms 拿 creator，然后 loadFormsCached 缓存命中不再调
     expect(bootstrapClient.listForms).toHaveBeenCalledWith(
-      expect.objectContaining({ systemToken: "TOKEN_TEST" }),
+      expect.objectContaining({ userId: "seed-admin-001" }),
       expect.anything(),
     );
   });
